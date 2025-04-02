@@ -2,7 +2,6 @@ import { prisma } from "./database";
 import { api } from "encore.dev/api";
 import log from "encore.dev/log";
 import busboy from "busboy";
-import { SQLDatabase } from "encore.dev/storage/sqldb";
 import { APICallMeta, appMeta, currentRequest } from "encore.dev"; // Define a bucket named 'profile-files' for storing files.
 import { Bucket } from "encore.dev/storage/objects";
 

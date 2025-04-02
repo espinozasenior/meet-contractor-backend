@@ -9,13 +9,42 @@ datasource db {
 }
 
 model User {
-  id      Int    @id @default(autoincrement())
+  id      String @id @default(uuid())
   name    String
   surname String
+
+  // Project relationships
+  ownedProjects     Project[] // Projects owned by this user
+  assistantProjects Project[] @relation("ProjectAssistants") // Projects where user is an assistant
+  realtorProjects   Project[] @relation("ProjectRealtors") // Projects where user is a realtor
 }
 
 model Media {
-  name      String    @id
+  name      String @id
   mime_type String
   data      Bytes
+
+  // Project relationship
+  projects Project[]
+}
+
+model Project {
+  id          String   @id @default(uuid())
+  name        String
+  location    String
+  description String?
+  status      String   @default("active")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relationships
+  owner   User   @relation(fields: [ownerId], references: [id])
+  ownerId String
+
+  // Media attachments
+  media Media[]
+
+  // Access control
+  assistants User[] @relation("ProjectAssistants")
+  realtors   User[] @relation("ProjectRealtors")
 }
