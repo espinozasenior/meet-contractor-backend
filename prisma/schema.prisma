@@ -13,3 +13,9 @@ model User {
   name    String
   surname String
 }
+
+model Media {
+  name      String    @id
+  mime_type String
+  data      Bytes
+}
