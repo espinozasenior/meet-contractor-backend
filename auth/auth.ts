@@ -20,6 +20,8 @@ interface AuthData {
   userID: string;
   imageUrl: string;
   emailAddress: string | null;
+  organizationId: string | null;
+  role: string | null;
 }
 
 const myAuthHandler = authHandler(async (params: AuthParams): Promise<
@@ -38,11 +40,17 @@ const myAuthHandler = authHandler(async (params: AuthParams): Promise<
     });
 
     const user = await clerkClient.users.getUser(result.sub);
+    
+    // Get the user's organization membership
+    const organizations = await clerkClient.users.getOrganizationMembershipList({ userId: user.id });
+    const primaryOrg = organizations.data.length > 0 ? organizations.data[0] : null;
 
     return {
       userID: user.id,
       imageUrl: user.imageUrl,
       emailAddress: user.emailAddresses[0].emailAddress || null,
+      organizationId: primaryOrg?.organization.id || null,
+      role: primaryOrg?.role || null,
     };
   } catch (e) {
     log.error(e);
