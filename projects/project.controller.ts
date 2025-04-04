@@ -9,9 +9,9 @@ import {
 } from './project.interface';
 import ProjectService from './project.service';
 
-const isCustomer = () => {
+const isCustomerOrAdmin = () => {
   const authData = getAuthData();
-  return authData?.role === 'customer';
+  return authData?.role === 'org:customer' || authData?.role === 'org:admin';
 };
 
 /**
@@ -20,8 +20,8 @@ const isCustomer = () => {
 export const create = api(
   { expose: true, method: "POST", path: "/projects", auth: true },
   async (data: CreateProjectParams): Promise<ProjectResponse> => {
-    if (!isCustomer()) {
-      throw APIError.permissionDenied("Only customers can create projects");
+    if (!isCustomerOrAdmin()) {
+      throw APIError.permissionDenied("Only customers and admin can create projects");
     }
     try {
       const ownerId = getAuthData()!.userID;
