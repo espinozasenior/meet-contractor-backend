@@ -10,6 +10,15 @@ import {
 
 const ProjectService = {
   create: async (data: CreateProjectDTO): Promise<ProjectResponse> => {
+    // First check if the user exists
+    const userExists = await prisma.user.findUnique({
+      where: { id: data.ownerId }
+    });
+    
+    if (!userExists) {
+      throw new Error(`User with ID ${data.ownerId} not found. Cannot create project with non-existent owner.`);
+    }
+    
     const project = await prisma.project.create({
       data: {
         name: data.name,
