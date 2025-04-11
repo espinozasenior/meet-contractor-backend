@@ -14,6 +14,11 @@ const isCustomerOrAdmin = () => {
   return authData?.role === 'org:customer' || authData?.role === 'org:admin';
 };
 
+const isAdmin = () => {
+  const authData = getAuthData();
+  return authData?.role === 'org:admin';
+};
+
 /**
  * Create a new project
  */
@@ -93,6 +98,9 @@ export const update = api(
 export const destroy = api(
   { expose: true, method: "DELETE", path: "/projects/:id", auth: true },
   async ({ id }: { id: string }): Promise<DeleteProjectResponse> => {
+    if (!isAdmin()) {
+      throw APIError.permissionDenied("You don't have permissions to delete a project");
+    }
     try {
       const result = await ProjectService.delete(id);
       return { success: result };

@@ -1,6 +1,6 @@
 export interface UserDto {
   /** ID of the user */
-  id: number;
+  id: string;
   /** Name of the user */
   name: string;
   /** Surname of the user */
@@ -9,6 +9,7 @@ export interface UserDto {
 
 export interface CreateUserDto {
   /** Name of the user */
+  id: string;
   name: string;
   /** Surname of the user */
   surname: string;

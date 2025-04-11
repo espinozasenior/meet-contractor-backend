@@ -33,10 +33,11 @@ const ProjectService = {
     return {
       id: project.id,
       name: project.name,
+      status: project.status,
       location: project.location,
       createdAt: project.createdAt,
       updatedAt: project.updatedAt,
-      customerId: project.ownerId.toString()
+      ownerId: project.ownerId.toString()
     };
   },
 
@@ -46,10 +47,11 @@ const ProjectService = {
     return {
       id: project.id,
       name: project.name,
+      status: project.status,
       location: project.location,
       createdAt: project.createdAt,
       updatedAt: project.updatedAt,
-      customerId: project.ownerId.toString()
+      ownerId: project.ownerId.toString()
     };
   },
 
@@ -58,10 +60,11 @@ const ProjectService = {
     return projects.map(project => ({
       id: project.id,
       name: project.name,
+      status: project.status,
       location: project.location,
       createdAt: project.createdAt,
       updatedAt: project.updatedAt,
-      customerId: project.ownerId.toString()
+      ownerId: project.ownerId.toString()
     }));
   },
 
@@ -77,10 +80,11 @@ const ProjectService = {
     return {
       id: updated.id,
       name: updated.name,
+      status: updated.status,
       location: updated.location,
       createdAt: updated.createdAt,
       updatedAt: updated.updatedAt,
-      customerId: updated.ownerId.toString()
+      ownerId: updated.ownerId.toString()
     };
   },
 

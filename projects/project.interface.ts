@@ -21,11 +21,12 @@ export interface UpdateProjectParams {
 // Response DTOs
 export interface ProjectResponse {
   id: string;
+  ownerId: string;
   name: string;
+  status: string;
   location: string;
   createdAt: Date;
   updatedAt: Date;
-  customerId: string;
 }
 
 export interface ProjectListResponse {

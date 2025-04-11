@@ -33,6 +33,8 @@ const myAuthHandler = authHandler(async (params: AuthParams): Promise<
     throw APIError.unauthenticated("no token provided");
   }
 
+  log.trace("Token: ", { token });
+
   try {
     const result = await verifyToken(token, {
       authorizedParties: AUTHORIZED_PARTIES,

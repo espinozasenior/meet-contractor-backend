@@ -1,4 +1,6 @@
 import { api, APIError } from "encore.dev/api";
+import { createClerkClient } from "@clerk/backend";
+import { secret } from "encore.dev/config";
 import {
   CreateUserDto,
   UpdateUserDto,
@@ -6,6 +8,11 @@ import {
   UserResponse,
 } from "./user.interface";
 import UserService from "./user.service";
+
+const clerkSecretKey = secret("ClerkSecretKey");
+const clerkClient = createClerkClient({
+  secretKey: clerkSecretKey(),
+});
 
 /**
  * Counts and returns the number of existing users
@@ -35,6 +42,23 @@ export const create = api(
         throw APIError.invalidArgument("Missing fields");
       }
       const result = await UserService.create(data);
+      
+      // Create organization membership in Clerk
+      try {
+        const organizations = await clerkClient.organizations.getOrganizationList();
+        if (organizations.data.length > 0) {
+          const defaultOrg = organizations.data[0];
+          await clerkClient.organizations.createOrganizationMembership({
+            organizationId: defaultOrg.id,
+            userId: data.id,
+            role: "basic_member",
+          });
+        }
+      } catch (clerkError) {
+        console.error("Error creating organization membership:", clerkError);
+        // Don't fail the user creation if org membership fails
+      }
+
       return result;
     } catch (error) {
       throw APIError.aborted(error?.toString() || "Error creating the user");
@@ -68,7 +92,7 @@ export const read = api(
  */
 export const readOne = api(
   { expose: true, method: "GET", path: "/users/:id" },
-  async ({ id }: { id: number }): Promise<UserResponse> => {
+  async ({ id }: { id: string }): Promise<UserResponse> => {
     try {
       const result = await UserService.findOne(id);
       return result;
@@ -87,7 +111,7 @@ export const update = api(
     id,
     data,
   }: {
-    id: number;
+    id: string;
     data: UpdateUserDto;
   }): Promise<UserResponse> => {
     try {
@@ -104,7 +128,7 @@ export const update = api(
  */
 export const destroy = api(
   { expose: true, method: "DELETE", path: "/users/:id" },
-  async ({ id }: { id: number }): Promise<Response> => {
+  async ({ id }: { id: string }): Promise<Response> => {
     try {
       const result = await UserService.delete(id);
       return result;
