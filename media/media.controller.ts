@@ -1,95 +1,119 @@
 import { prisma } from "./database";
-import { api } from "encore.dev/api";
+import { api, APIError } from "encore.dev/api";
 import log from "encore.dev/log";
 import busboy from "busboy";
-import { APICallMeta, appMeta, currentRequest } from "encore.dev"; // Define a bucket named 'profile-files' for storing files.
+import { APICallMeta, appMeta, currentRequest } from "encore.dev";
 import { Bucket } from "encore.dev/storage/objects";
+import {
+  FileEntry,
+  UploadFileParams,
+  UploadFileResponse,
+  ListResponse,
+  MediaHeaders,
+} from "./media.interface";
 
-// Define a bucket named 'profile-files' for storing files.
-// Making it possible to get public URLs to files in the bucket
-// by setting 'public' to true
+// Define a bucket named 'profile-files' for storing files
 export const filesBucket = new Bucket("profile-files", {
   versioned: false,
   public: true,
 });
 
-// Define a database named 'files', using the database migrations
-// in the "./migrations" folder. Encore automatically provisions,
-// migrates, and connects to the database.
-// export const DB = new SQLDatabase("files", {
-//   migrations: "./migrations",
-// });
-
-type FileEntry = { data: any[]; filename: string; mimeType: string };
-
-/**
- * Raw endpoint for storing a single file to the database.
- * Setting bodyLimit to null allows for unlimited file size.
- */
 export const save = api.raw(
-  { expose: true, method: "POST", path: "/upload", bodyLimit: null },
+  { expose: true, method: "POST", path: "/upload/:project_id", auth: false, bodyLimit: null },
   async (req, res) => {
-    const bb = busboy({
-      headers: req.headers,
-      limits: { files: 1 },
-    });
-    const entry: FileEntry = { filename: "", data: [], mimeType: "" };
+    try {
+      const { project_id } = (currentRequest() as APICallMeta).pathParams;
+      if (!project_id) {
+        throw APIError.invalidArgument("project_id is required");
+      }
 
-    bb.on("file", (_, file, info) => {
-      entry.mimeType = info.mimeType;
-      entry.filename = info.filename;
-      file
-        .on("data", (data) => {
-          entry.data.push(data);
-        })
-        .on("close", () => {
-          log.info(`File ${entry.filename} uploaded`);
-        })
-        .on("error", (err) => {
-          bb.emit("error", err);
+      // Verify project exists
+      const project = await prisma.project.findUnique({
+        where: { id: project_id }
+      });
+
+      if (!project) {
+        throw APIError.notFound(`Project with ID ${project_id} not found`);
+      }
+
+      const bb = busboy({
+        headers: req.headers as MediaHeaders,
+        limits: { files: 1 },
+      });
+      const entry: FileEntry = { filename: "", data: [], mimeType: "" };
+
+      return new Promise<UploadFileResponse>((resolve, reject) => {
+        bb.on("file", (_, file, info) => {
+          entry.mimeType = info.mimeType;
+          entry.filename = info.filename;
+          file
+            .on("data", (data) => {
+              entry.data.push(data);
+            })
+            .on("close", () => {
+              log.info(`File ${entry.filename} uploaded`);
+            })
+            .on("error", (err) => {
+              reject(APIError.internal(`File upload failed: ${(err as Error).message}`));
+            });
         });
-    });
 
-    bb.on("close", async () => {
-      try {
-        const buf = Buffer.concat(entry.data);
+        bb.on("close", async () => {
+          try {
+            if (!entry.filename || !entry.mimeType) {
+              throw APIError.invalidArgument("No file was provided");
+            }
 
-        // Save file to bucket
-        await filesBucket.upload(entry.filename, buf, {
-          contentType: entry.mimeType,
-        });
+            const buf = Buffer.concat(entry.data);
 
-        // Save file to DB
-        const media = await prisma.media.upsert({
-          where: { name: entry.filename },
-          update: {
-            data: buf,
-            mime_type: entry.mimeType
-          },
-          create: {
-            name: entry.filename,
-            data: buf,
-            mime_type: entry.mimeType
+            // Save file to bucket
+            await filesBucket.upload(entry.filename, buf, {
+              contentType: entry.mimeType,
+            });
+
+            // Save file to DB
+            const media = await prisma.media.upsert({
+              where: { name: entry.filename },
+              update: {
+                data: buf,
+                mime_type: entry.mimeType,
+                projects: {
+                  connect: { id: project_id }
+                }
+              },
+              create: {
+                name: entry.filename,
+                data: buf,
+                mime_type: entry.mimeType,
+                projects: {
+                  connect: { id: project_id }
+                }
+              }
+            });
+            log.info(`File ${entry.filename} saved`);
+
+            resolve({
+              media: {
+                name: entry.filename,
+                mime_type: entry.mimeType,
+                url: filesBucket.publicUrl(entry.filename)
+              }
+            });
+          } catch (err) {
+            reject(APIError.internal(`Failed to save file: ${(err as Error).message}`));
           }
         });
-        log.info(`File ${entry.filename} saved`);
 
-        // Redirect to the root page
-        res.writeHead(303, { Connection: "close", Location: "/" });
-        res.end();
-      } catch (err) {
-        bb.emit("error", err);
-      }
-    });
+        bb.on("error", (err) => {
+          reject(APIError.internal(`Busboy error: ${(err as Error).message}`));
+        });
 
-    bb.on("error", async (err) => {
-      res.writeHead(500, { Connection: "close" });
-      res.end(`Error: ${(err as Error).message}`);
-    });
-
-    req.pipe(bb);
-    return;
-  },
+        req.pipe(bb);
+      });
+    } catch (err) {
+      throw APIError.internal(`Upload initialization failed: ${(err as Error).message}`);
+    }
+  }
 );
 
 /**
@@ -97,68 +121,112 @@ export const save = api.raw(
  * Setting bodyLimit to null allows for unlimited file size.
  */
 export const saveMultiple = api.raw(
-  { expose: true, method: "POST", path: "/upload-multiple", bodyLimit: null },
+  { expose: true, method: "POST", path: "/upload-multiple/:project_id", auth: true, bodyLimit: null },
   async (req, res) => {
-    const bb = busboy({ headers: req.headers });
-    const entries: FileEntry[] = [];
-
-    bb.on("file", (_, file, info) => {
-      const entry: FileEntry = { filename: "", data: [], mimeType: "" };
-
-      file
-        .on("data", (data) => {
-          entry.data.push(data);
-        })
-        .on("close", () => {
-          entries.push(entry);
-        })
-        .on("error", (err) => {
-          bb.emit("error", err);
-        });
-    });
-
-    bb.on("close", async () => {
-      try {
-        for (const entry of entries) {
-          const buf = Buffer.concat(entry.data);
-
-          // Save file to Bucket
-          await filesBucket.upload(entry.filename, buf, {
-            contentType: entry.mimeType,
-          });
-
-          // Save file to DB
-          await prisma.media.upsert({
-            where: { name: entry.filename },
-            update: {
-              data: buf,
-              mime_type: entry.mimeType
-            },
-            create: {
-              name: entry.filename,
-              data: buf,
-              mime_type: entry.mimeType
-            }
-          });
-          log.info(`File ${entry.filename} saved`);
-        }
-
-        // Redirect to the root page
-        res.writeHead(303, { Connection: "close", Location: "/" });
-        res.end();
-      } catch (err) {
-        bb.emit("error", err);
+    try {
+      const { project_id } = (currentRequest() as APICallMeta).pathParams;
+      if (!project_id) {
+        throw APIError.invalidArgument("project_id is required");
       }
-    });
 
-    bb.on("error", async (err) => {
-      res.writeHead(500, { Connection: "close" });
-      res.end(`Error: ${(err as Error).message}`);
-    });
+      // Verify project exists
+      const project = await prisma.project.findUnique({
+        where: { id: project_id }
+      });
 
-    req.pipe(bb);
-    return;
-  },
+      if (!project) {
+        throw APIError.notFound(`Project with ID ${project_id} not found`);
+      }
+
+      const bb = busboy({
+        headers: req.headers as MediaHeaders,
+      });
+      const entries: FileEntry[] = [];
+
+      return new Promise<UploadFileResponse>((resolve, reject) => {
+        bb.on("file", (_, file, info) => {
+          const entry: FileEntry = { 
+            filename: info.filename,
+            data: [],
+            mimeType: info.mimeType
+          };
+
+          file
+            .on("data", (data) => {
+              entry.data.push(data);
+            })
+            .on("close", () => {
+              entries.push(entry);
+              log.info(`File ${entry.filename} uploaded`);
+            })
+            .on("error", (err) => {
+              reject(APIError.internal(`File upload failed: ${(err as Error).message}`));
+            });
+        });
+
+        bb.on("close", async () => {
+          try {
+            if (entries.length === 0) {
+              throw APIError.invalidArgument("No files were provided");
+            }
+
+            // Process the last file for the response
+            const lastEntry = entries[entries.length - 1];
+            const lastBuf = Buffer.concat(lastEntry.data);
+
+            // Save all files
+            for (const entry of entries) {
+              const buf = Buffer.concat(entry.data);
+
+              // Save file to bucket
+              await filesBucket.upload(entry.filename, buf, {
+                contentType: entry.mimeType,
+              });
+
+              // Save file to DB
+              await prisma.media.upsert({
+                where: { name: entry.filename },
+                update: {
+                  data: buf,
+                  mime_type: entry.mimeType,
+                  projects: {
+                    connect: { id: project_id }
+                  }
+                },
+                create: {
+                  name: entry.filename,
+                  data: buf,
+                  mime_type: entry.mimeType,
+                  projects: {
+                    connect: { id: project_id }
+                  }
+                }
+              });
+              log.info(`File ${entry.filename} saved`);
+            }
+
+            resolve({
+              media: {
+                name: lastEntry.filename,
+                mime_type: lastEntry.mimeType,
+                url: filesBucket.publicUrl(lastEntry.filename)
+              }
+            });
+          } catch (err) {
+            reject(APIError.internal(`Failed to save files: ${(err as Error).message}`));
+          }
+        });
+
+        bb.on("error", (err) => {
+          reject(APIError.internal(`Busboy error: ${(err as Error).message}`));
+        });
+
+        req.pipe(bb);
+      });
+    } catch (err) {
+      throw APIError.internal(`Upload initialization failed: ${(err as Error).message}`);
+    }
+  }
 );
 
 // Raw endpoint for serving a file from the database
@@ -174,46 +242,50 @@ export const get = api.raw(
       });
 
       if (!row) {
-        resp.writeHead(404);
-        resp.end("File not found");
-        return;
+        throw APIError.notFound("File not found");
       }
 
-      resp.writeHead(200, { "Content-Type": row.mime_type, "Connection": "close" });
+      const headers: MediaHeaders = {
+        "Content-Type": row.mime_type,
+        "Connection": "close"
+      };
+      resp.writeHead(200, headers);
       const chunk = Buffer.from(row.data);
       resp.end(chunk);
     } catch (err) {
-      resp.writeHead(500);
-      resp.end((err as Error).message);
+      throw APIError.internal((err as Error).message);
     }
   },
 );
-
-interface ListResponse {
-  files: { name: string; url: string }[];
-}
 
 // API endpoint for listing all files in the database
 export const listDBFiles = api(
   { expose: true, method: "GET", path: "/db-files" },
   async (): Promise<ListResponse> => {
-    const rows = await prisma.media.findMany({
-      select: {
-        name: true,
-      },
-    });
-    if (!rows) {
-      return { files: [] };
-    }
-    const resp: ListResponse = { files: [] };
-    const { apiBaseUrl } = appMeta();
-    for await (const row of rows) {
-      resp.files.push({
-        name: row.name,
-        url: `${apiBaseUrl}/files/${row.name}`,
+    try {
+      const rows = await prisma.media.findMany({
+        select: {
+          name: true,
+        },
       });
+      if (!rows) {
+        return { files: [] };
+      }
+      const resp: ListResponse = { files: [] };
+      const { apiBaseUrl } = appMeta();
+      for await (const row of rows) {
+        resp.files.push({
+          name: row.name,
+          url: `${apiBaseUrl}/files/${row.name}`,
+        });
+      }
+      return resp;
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("Can't reach database server")) {
+        throw APIError.unavailable("Database connection error: Unable to reach the database server. Please try again later.");
+      }
+      throw APIError.internal(`Database error: ${(error as Error).message}`);
     }
-    return resp;
   },
 );
 
@@ -221,16 +293,23 @@ export const listDBFiles = api(
 export const listBucketFiles = api(
   { expose: true, method: "GET", path: "/bucket-files" },
   async (): Promise<ListResponse> => {
-    const resp: ListResponse = { files: [] };
+    try {
+      const resp: ListResponse = { files: [] };
 
-    for await (const entry of filesBucket.list({})) {
-      resp.files.push({
-        url: filesBucket.publicUrl(entry.name),
-        name: entry.name,
-      });
+      for await (const entry of filesBucket.list({})) {
+        resp.files.push({
+          url: filesBucket.publicUrl(entry.name),
+          name: entry.name,
+        });
+      }
+
+      return resp;
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("Can't reach database server")) {
+        throw APIError.unavailable("Database connection error: Unable to reach the database server. Please try again later.");
+      }
+      throw APIError.internal(`Database error: ${(error as Error).message}`);
     }
-
-    return resp;
   },
 );
 
@@ -238,12 +317,13 @@ export const listBucketFiles = api(
 export const frontend = api.raw(
   { expose: true, path: "/!path", method: "GET" },
   (req, resp) => {
-    resp.writeHead(200, { "Content-Type": "text/html" });
+    const headers: MediaHeaders = { "Content-Type": "text/html" };
+    resp.writeHead(200, headers);
     resp.end(`
       <html>
         <head></head>
         <body>          
-          <form method="POST" enctype="multipart/form-data" action="/upload">
+          <form method="POST" enctype="multipart/form-data" action="/upload/b06dc8c1-c580-440a-add2-6da5b167bafc">
             <label for="filefield">Single file upload:</label><br>
             <input type="file" name="filefield">
             <input type="submit">
