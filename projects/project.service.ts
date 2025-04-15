@@ -42,7 +42,12 @@ const ProjectService = {
   },
 
   findOne: async (id: string): Promise<ProjectResponse | null> => {
-    const project = await prisma.project.findUnique({ where: { id: id } });
+    const project = await prisma.project.findUnique({
+      where: { id: id },
+      include: {
+        conversations: true
+      }
+    });
     if (!project) return null;
     return {
       id: project.id,
@@ -51,12 +56,25 @@ const ProjectService = {
       location: project.location,
       createdAt: project.createdAt,
       updatedAt: project.updatedAt,
-      ownerId: project.ownerId.toString()
+      ownerId: project.ownerId.toString(),
+      conversations: project.conversations.map(conversation => ({
+        id: conversation.id,
+        title: conversation.title,
+        createdAt: conversation.createdAt,
+        updatedAt: conversation.updatedAt,
+        lastReadAt: conversation.lastReadAt,
+        lastMessageAt: conversation.lastMessageAt,
+        visibility: conversation.visibility
+      }))
     };
   },
 
   findAll: async (): Promise<ProjectResponse[]> => {
-    const projects = await prisma.project.findMany();
+    const projects = await prisma.project.findMany({
+      include: {
+        conversations: true
+      }
+    });
     return projects.map(project => ({
       id: project.id,
       name: project.name,
@@ -64,7 +82,16 @@ const ProjectService = {
       location: project.location,
       createdAt: project.createdAt,
       updatedAt: project.updatedAt,
-      ownerId: project.ownerId.toString()
+      ownerId: project.ownerId.toString(),
+      conversations: project.conversations.map(conversation => ({
+        id: conversation.id,
+        title: conversation.title,
+        createdAt: conversation.createdAt,
+        updatedAt: conversation.updatedAt,
+        lastReadAt: conversation.lastReadAt,
+        lastMessageAt: conversation.lastMessageAt,
+        visibility: conversation.visibility
+      }))
     }));
   },
 

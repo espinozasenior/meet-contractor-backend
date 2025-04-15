@@ -24,7 +24,7 @@ interface AuthData {
   role: string | null;
 }
 
-const myAuthHandler = authHandler(async (params: AuthParams): Promise<
+export const myAuthHandler = authHandler(async (params: AuthParams): Promise<
   AuthData
 > => {
   const token = params.authorization.replace("Bearer ", "");

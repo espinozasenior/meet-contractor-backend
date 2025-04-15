@@ -30,18 +30,21 @@ model User {
   ownedProjects     Project[] // Projects owned by this user
   conversations     Conversation[]
   assistantProjects Project[] @relation("ProjectAssistants") // Projects where user is an assistant
-  realtorProjects   Project[] @relation("ProjectRealtors") // Projects where user is a realtor
  
   @@map("users")
 }
 
 model Media {
-  name      String @id
+  id        String   @id @default(uuid())
+  projectId String
+  name      String   @unique
   mime_type String
   data      Bytes
 
   // Project relationship
-  projects Project[]
+  project Project @relation("ProjectMedias", fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("media")
 }
 
 model Project {
@@ -58,14 +61,13 @@ model Project {
   ownerId String
 
   // Media attachments
-  media Media[]
+  media Media[] @relation("ProjectMedias")
 
   // Conversations in the project
   conversations Conversation[]
 
   // Access control
   assistants User[] @relation("ProjectAssistants")
-  realtors   User[] @relation("ProjectRealtors")
 
   @@map("projects")
 }
@@ -80,10 +82,11 @@ model Conversation {
   lastMessageAt DateTime?
   visibility Visibility @default(PRIVATE)
 
-  project     Project   @relation(fields: [projectId], references: [id])
-  messages    Message[]
+  project     Project   @relation(fields: [projectId], references: [id], map: "conversations_project_id_fkey")
+  messages    Message[]  @relation("ConversationMessages")
   members     User[]
 
+  @@index([projectId])
   @@map("conversations")
 }
 
@@ -95,7 +98,8 @@ model Message {
   attachments    Json?
   createdAt      DateTime @default(now())
 
-  conversation Conversation @relation(fields: [conversationId], references: [id])
+  conversation Conversation @relation("ConversationMessages", fields: [conversationId], references: [id], onDelete: Cascade)
 
+  @@index([conversationId])
   @@map("messages")
 }

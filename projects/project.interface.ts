@@ -5,11 +5,11 @@ export interface CreateProjectParams {
   name: string;
   location: string;
   description?: string;
-  status?: string;
 }
 
 export interface CreateProjectDTO extends CreateProjectParams{
-  ownerId: string
+  ownerId: string;
+  status?: string;
 }
 
 export interface UpdateProjectParams {
@@ -27,6 +27,15 @@ export interface ProjectResponse {
   location: string;
   createdAt: Date;
   updatedAt: Date;
+  conversations?: {
+    id: string;
+    title: string;
+    createdAt: Date;
+    updatedAt: Date;
+    lastReadAt?: Date | null;
+    lastMessageAt?: Date | null;
+    visibility: string;
+  }[];
 }
 
 export interface ProjectListResponse {

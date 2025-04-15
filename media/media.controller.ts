@@ -40,7 +40,7 @@ export const save = api.raw(
         headers: req.headers as MediaHeaders,
         limits: { files: 1 },
       });
-      const entry: FileEntry = { filename: "", data: [], mimeType: "" };
+      const entry: FileEntry = { id: crypto.randomUUID(), filename: "", data: [], mimeType: "" };
 
       return new Promise<UploadFileResponse>((resolve, reject) => {
         bb.on("file", (_, file, info) => {
@@ -73,19 +73,20 @@ export const save = api.raw(
 
             // Save file to DB
             const media = await prisma.media.upsert({
-              where: { name: entry.filename },
+              where: { id: entry.id },
               update: {
                 data: buf,
                 mime_type: entry.mimeType,
-                projects: {
+                project: {
                   connect: { id: project_id }
                 }
               },
               create: {
+                id: entry.id,
                 name: entry.filename,
                 data: buf,
                 mime_type: entry.mimeType,
-                projects: {
+                project: {
                   connect: { id: project_id }
                 }
               }
@@ -94,6 +95,7 @@ export const save = api.raw(
 
             resolve({
               media: {
+                id: entry.id,
                 name: entry.filename,
                 mime_type: entry.mimeType,
                 url: filesBucket.publicUrl(entry.filename)
@@ -146,6 +148,7 @@ export const saveMultiple = api.raw(
       return new Promise<UploadFileResponse>((resolve, reject) => {
         bb.on("file", (_, file, info) => {
           const entry: FileEntry = { 
+            id: crypto.randomUUID(),
             filename: info.filename,
             data: [],
             mimeType: info.mimeType
@@ -189,7 +192,7 @@ export const saveMultiple = api.raw(
                 update: {
                   data: buf,
                   mime_type: entry.mimeType,
-                  projects: {
+                  project: {
                     connect: { id: project_id }
                   }
                 },
@@ -197,7 +200,7 @@ export const saveMultiple = api.raw(
                   name: entry.filename,
                   data: buf,
                   mime_type: entry.mimeType,
-                  projects: {
+                  project: {
                     connect: { id: project_id }
                   }
                 }
@@ -207,6 +210,7 @@ export const saveMultiple = api.raw(
 
             resolve({
               media: {
+                id: lastEntry.id,
                 name: lastEntry.filename,
                 mime_type: lastEntry.mimeType,
                 url: filesBucket.publicUrl(lastEntry.filename)
@@ -231,13 +235,13 @@ export const saveMultiple = api.raw(
 
 // Raw endpoint for serving a file from the database
 export const get = api.raw(
-  { expose: true, method: "GET", path: "/files/:name" },
+  { expose: true, method: "GET", path: "/files/:id" },
   async (req, resp) => {
     try {
-      const { name } = (currentRequest() as APICallMeta).pathParams;
+      const { id } = (currentRequest() as APICallMeta).pathParams;
       const row = await prisma.media.findUnique({
         where: {
-          name,
+          id,
         },
       });
 

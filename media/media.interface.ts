@@ -1,6 +1,7 @@
 import { Bucket } from "encore.dev/storage/objects";
 
 export interface FileEntry {
+  id: string;
   data: any[];
   filename: string;
   mimeType: string;
@@ -12,6 +13,7 @@ export interface UploadFileParams {
 
 export interface UploadFileResponse {
   media: {
+    id: string;
     name: string;
     mime_type: string;
     url: string;

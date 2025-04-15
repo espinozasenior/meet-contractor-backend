@@ -8,13 +8,14 @@ import {
   DeleteProjectResponse
 } from './project.interface';
 import ProjectService from './project.service';
+import { ProjectCreatedTopic } from './pubsub';
 
-const isCustomerOrAdmin = () => {
+const isCustomerOrAdmin = (): boolean => {
   const authData = getAuthData();
   return authData?.role === 'org:customer' || authData?.role === 'org:admin';
 };
 
-const isAdmin = () => {
+const isAdmin = (): boolean => {
   const authData = getAuthData();
   return authData?.role === 'org:admin';
 };
@@ -30,10 +31,16 @@ export const create = api(
     }
     try {
       const ownerId = getAuthData()!.userID;
-      if (!data.name || !data.location || !data.description) {
+      if (!data.name || !data.location) {
         throw APIError.invalidArgument("Missing required fields");
       }
-      const result = await ProjectService.create({ ...data, ownerId });
+      const result = await ProjectService.create({ ...data, ownerId, status: 'active'  });
+      
+      // Publish project created event
+      await ProjectCreatedTopic.publish({
+        project: result
+      });
+      
       return result;
     } catch (error) {
       throw APIError.aborted(error?.toString() || "Error creating project");
