@@ -23,7 +23,7 @@
     "@clerk/backend": "^1.25.8",
     "@prisma/client": "^5.22.0",
     "busboy": "^1.6.0",
-    "encore.dev": "^1.46.17",
+    "encore.dev": "^1.46.20",
     "svix": "^1.63.1"
   },
   "optionalDependencies": {
